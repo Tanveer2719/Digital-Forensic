@@ -107,6 +107,7 @@ def validate_hash_chain(events):
       
         for i in range(1, len(events))
     )
+
 def validate_per_evidence_hash_chain(events):
     last_hashes = {}
     for e in events:
@@ -388,7 +389,6 @@ def generate_event(case_id, device_id, evidence_id, device_cat, index, prev_hash
     return event, post_hash, ts
 
 
-
 def get_event_type(i, device_category):
     if i <= len(DFG_SEQUENCE):
         return DFG_SEQUENCE[i-1]
@@ -543,7 +543,7 @@ def build_normal_case(n_events, parallel_prob=0.7):
 
         # If sequential mode, ensure all other evidence threads start after the latest event
         if not parallel and events:
-            max_ts = max(e["timestamp"] for e in events)
+            max_ts = max(e["timestamp_iso"] for e in events)
             for eid in unfinished:
                 evidence_threads[eid] = max_ts + timedelta(seconds=10)
 
@@ -572,7 +572,7 @@ def build_normal_case(n_events, parallel_prob=0.7):
         "custodians": [custodian_main, custodian_analysis]
     }
 
-    return summary, sorted(events, key=lambda e: e["timestamp"])  # sorted to simulate threaded timeline
+    return summary, sorted(events, key=lambda e: e["timestamp_iso"])  # sorted to simulate threaded timeline
 
 
 class AnomalyType(Enum):
