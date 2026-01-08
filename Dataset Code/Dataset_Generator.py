@@ -543,10 +543,10 @@ def build_normal_case(n_events, parallel_prob=0.7):
 
         # If sequential mode, ensure all other evidence threads start after the latest event
         if not parallel and events:
-            max_ts = max(e["timestamp_iso"] for e in events)
+            max_ts = max(datetime.fromisoformat(e["timestamp_iso"]) for e in events)
             for eid in unfinished:
                 evidence_threads[eid] = max_ts + timedelta(seconds=10)
-
+                
     # ✅ Validations remain the same
     assert validate_per_evidence_hash_chain(events)
     assert validate_seals(events)
