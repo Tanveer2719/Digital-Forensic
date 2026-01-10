@@ -198,14 +198,14 @@ def validate_handover_continuity(events):
 
 # ************** Generator Codes ################
 
-GENERATED_IDS = set()
+_id_counter = 0
 
 def gen_id(prefix, length=8):
-    while True:
-        new_id = f"{prefix}-{uuid.uuid4().hex[:length]}"
-        if new_id not in GENERATED_IDS:
-            GENERATED_IDS.add(new_id)
-            return new_id
+    global _id_counter
+    _id_counter += 1
+    return f"{prefix}-{_id_counter:08d}"
+
+
 
 
 def generate_warrant(case_id: str):
