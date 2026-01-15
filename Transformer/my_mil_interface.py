@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 import torchmetrics
 from my_AdamW_optimizer import create_optimizer
-from focal_loss import FocalLoss  # <-- your FocalLoss class
+from my_focal_loss import FocalLoss  
 
 class ForensicTransMILInterface(pl.LightningModule):
     def __init__(self, model, lr=5e-5, weight_decay=1e-4,
