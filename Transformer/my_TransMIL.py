@@ -41,6 +41,7 @@ class TransMIL(nn.Module):
         self.layers = nn.ModuleList([TransLayer(dim=dim) for _ in range(n_layers)])
         self.norm = nn.LayerNorm(dim)
         self.fc_out = nn.Linear(dim, 1)
+        print('Inside the __main__function')
 
     def forward(self, data, mask=None):
         """
