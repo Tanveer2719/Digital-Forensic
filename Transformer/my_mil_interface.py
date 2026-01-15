@@ -1,28 +1,31 @@
 import torch
 import pytorch_lightning as pl
 import torchmetrics
-import pandas as pd
-
 from my_AdamW_optimizer import create_optimizer
-
+from focal_loss import FocalLoss  # <-- your FocalLoss class
 
 class ForensicTransMILInterface(pl.LightningModule):
-
-    def __init__(self, model, lr=1e-4, weight_decay=1e-4, pos_weight=None):
+    def __init__(self, model, lr=5e-5, weight_decay=1e-4,
+                 use_focal=False, alpha=0.25, gamma=2.0, pos_weight=None):
         super().__init__()
         self.model = model
 
         # Save hyperparameters manually
         self.lr = lr
         self.weight_decay = weight_decay
+        self.use_focal = use_focal
 
         # ---- Loss
-        if pos_weight is not None:
-            self.loss_fn = torch.nn.BCEWithLogitsLoss(
-                pos_weight=torch.tensor(pos_weight)
-            )
+        if use_focal:
+            # Use Focal Loss for imbalanced MIL datasets
+            self.loss_fn = FocalLoss(apply_nonlin=torch.sigmoid, alpha=alpha, gamma=gamma)
         else:
-            self.loss_fn = torch.nn.BCEWithLogitsLoss()
+            if pos_weight is not None:
+                self.loss_fn = torch.nn.BCEWithLogitsLoss(
+                    pos_weight=torch.tensor(pos_weight)
+                )
+            else:
+                self.loss_fn = torch.nn.BCEWithLogitsLoss()
 
         # ---- Metrics
         self.auroc = torchmetrics.AUROC(task="binary")
@@ -31,25 +34,11 @@ class ForensicTransMILInterface(pl.LightningModule):
         self.recall = torchmetrics.Recall(task="binary")
 
     # -------------------------------------------------------
-    def forward(self, data, mask):
+    def forward(self, data, mask=None):
         return self.model(data=data, mask=mask)
 
     # -------------------------------------------------------
-    def training_step(self, batch, batch_idx):
-        data, mask, label = batch
-        out = self(data, mask)
-
-        logits = out["logits"]
-        if logits.dim() == 2 and logits.size(1) == 1:
-            logits = logits.squeeze(1)
-
-        label = label.float()
-        loss = self.loss_fn(logits, label)
-        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
-        return loss
-
-    # -------------------------------------------------------
-    def validation_step(self, batch, batch_idx):
+    def compute_loss_and_preds(self, batch):
         data, mask, label = batch
         out = self(data, mask)
 
@@ -59,8 +48,20 @@ class ForensicTransMILInterface(pl.LightningModule):
 
         probs = torch.sigmoid(logits)
         preds = (probs > 0.5).long()
-        label = label.long()
+        return logits, probs, preds, label
 
+    # -------------------------------------------------------
+    def training_step(self, batch, batch_idx):
+        logits, probs, preds, label = self.compute_loss_and_preds(batch)
+        loss = self.loss_fn(logits, label.float())
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        return loss
+
+    # -------------------------------------------------------
+    def validation_step(self, batch, batch_idx):
+        logits, probs, preds, label = self.compute_loss_and_preds(batch)
+
+        label = label.long()
         self.log("val_loss", self.loss_fn(logits, label.float()), prog_bar=True)
         self.log("val_auc", self.auroc(probs, label))
         self.log("val_f1", self.f1(preds, label))
@@ -69,17 +70,9 @@ class ForensicTransMILInterface(pl.LightningModule):
 
     # -------------------------------------------------------
     def test_step(self, batch, batch_idx):
-        data, mask, label = batch
-        out = self(data, mask)
+        logits, probs, preds, label = self.compute_loss_and_preds(batch)
 
-        logits = out["logits"]
-        if logits.dim() == 2 and logits.size(1) == 1:
-            logits = logits.squeeze(1)
-
-        probs = torch.sigmoid(logits)
-        preds = (probs > 0.5).long()
         label = label.long()
-
         self.log("test_auc", self.auroc(probs, label))
         self.log("test_f1", self.f1(preds, label))
         self.log("test_precision", self.precision(preds, label))
