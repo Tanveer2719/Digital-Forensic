@@ -17,7 +17,7 @@ class ForensicTransMILInterface(pl.LightningModule):
     ):
         super().__init__()
         self.model = model
-        self.save_hyperparameters(ignore=["model"])
+        # self.save_hyperparameters(ignore=["model"])
 
         # ---- Loss (binary, imbalanced safe)
         if pos_weight is not None:
@@ -93,8 +93,8 @@ class ForensicTransMILInterface(pl.LightningModule):
     def configure_optimizers(self):
         return create_optimizer(
             model=self.model,
-            lr=self.hparams.lr,
-            weight_decay=self.hparams.weight_decay,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
             T_max=20,      # optionally adjust
             eta_min=1e-6
         )
