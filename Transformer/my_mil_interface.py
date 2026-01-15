@@ -45,7 +45,7 @@ class ForensicTransMILInterface(pl.LightningModule):
 
         label = label.float()
         loss = self.loss_fn(logits, label)
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         return loss
 
     # -------------------------------------------------------
