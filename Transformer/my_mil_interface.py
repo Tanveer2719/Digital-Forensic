@@ -8,18 +8,15 @@ from my_AdamW_optimizer import create_optimizer
 
 class ForensicTransMILInterface(pl.LightningModule):
 
-    def __init__(
-        self,
-        model,
-        lr=1e-4,
-        weight_decay=1e-4,
-        pos_weight=None
-    ):
+    def __init__(self, model, lr=1e-4, weight_decay=1e-4, pos_weight=None):
         super().__init__()
         self.model = model
-        # self.save_hyperparameters(ignore=["model"])
 
-        # ---- Loss (binary, imbalanced safe)
+        # Save hyperparameters manually
+        self.lr = lr
+        self.weight_decay = weight_decay
+
+        # ---- Loss
         if pos_weight is not None:
             self.loss_fn = torch.nn.BCEWithLogitsLoss(
                 pos_weight=torch.tensor(pos_weight)
