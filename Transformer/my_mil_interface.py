@@ -39,11 +39,12 @@ class ForensicTransMILInterface(pl.LightningModule):
         data, mask, label = batch
         out = self(data, mask)
 
-        logits = out["logits"].squeeze(1)
+        logits = out["logits"]
+        if logits.dim() == 2 and logits.size(1) == 1:
+            logits = logits.squeeze(1)
+
         label = label.float()
-
         loss = self.loss_fn(logits, label)
-
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
@@ -52,10 +53,12 @@ class ForensicTransMILInterface(pl.LightningModule):
         data, mask, label = batch
         out = self(data, mask)
 
-        logits = out["logits"].squeeze(1)
+        logits = out["logits"]
+        if logits.dim() == 2 and logits.size(1) == 1:
+            logits = logits.squeeze(1)
+
         probs = torch.sigmoid(logits)
         preds = (probs > 0.5).long()
-
         label = label.long()
 
         self.log("val_loss", self.loss_fn(logits, label.float()), prog_bar=True)
@@ -69,10 +72,12 @@ class ForensicTransMILInterface(pl.LightningModule):
         data, mask, label = batch
         out = self(data, mask)
 
-        logits = out["logits"].squeeze(1)
+        logits = out["logits"]
+        if logits.dim() == 2 and logits.size(1) == 1:
+            logits = logits.squeeze(1)
+
         probs = torch.sigmoid(logits)
         preds = (probs > 0.5).long()
-
         label = label.long()
 
         self.log("test_auc", self.auroc(probs, label))
@@ -92,6 +97,6 @@ class ForensicTransMILInterface(pl.LightningModule):
             model=self.model,
             lr=self.lr,
             weight_decay=self.weight_decay,
-            T_max=20,      # optionally adjust
+            T_max=20,
             eta_min=1e-6
         )
