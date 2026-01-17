@@ -3,78 +3,35 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class FocalLoss(nn.Module):
     """
-    Focal Loss implementation for binary/multi-class classification.
-    Works with 1D logits for binary classification as well as 2D logits [B, C] for multi-class.
+    Binary Focal Loss operating on probabilities (after sigmoid).
+
+    Expected:
+        probs  : Tensor (B,) or (B,1) in [0,1]
+        targets: Tensor (B,) or (B,1) in {0,1}
     """
 
-    def __init__(self, apply_nonlin=None, alpha=None, gamma=2, balance_index=0, smooth=1e-5, size_average=True):
-        super(FocalLoss, self).__init__()
-        self.apply_nonlin = apply_nonlin
+    def __init__(self, alpha=0.25, gamma=2.0, reduction="mean", eps=1e-8):
+        super().__init__()
         self.alpha = alpha
         self.gamma = gamma
-        self.balance_index = balance_index
-        self.smooth = smooth
-        self.size_average = size_average
+        self.reduction = reduction
+        self.eps = eps
 
-        if self.smooth is not None and (self.smooth < 0 or self.smooth > 1.0):
-            raise ValueError('smooth value should be in [0,1]')
+    def forward(self, probs, targets):
+        probs = probs.view(-1)
+        targets = targets.view(-1).float()
 
-    def forward(self, logit, target):
-        if self.apply_nonlin is not None:
-            logit = self.apply_nonlin(logit)
+        probs = torch.clamp(probs, self.eps, 1.0 - self.eps)
 
-        # Make logits 2D for binary classification
-        if logit.dim() == 1:
-            logit = logit.view(-1, 1)
+        pt = torch.where(targets == 1, probs, 1 - probs)
+        alpha_t = torch.where(targets == 1, self.alpha, 1 - self.alpha)
 
-        num_class = logit.shape[1]
+        loss = -alpha_t * (1 - pt) ** self.gamma * torch.log(pt)
 
-        # Flatten extra dims if any
-        if logit.dim() > 2:
-            logit = logit.view(logit.size(0), logit.size(1), -1)
-            logit = logit.permute(0, 2, 1).contiguous()
-            logit = logit.view(-1, logit.size(-1))
-
-        target = target.view(-1, 1)
-
-        # Alpha
-        alpha = self.alpha
-        if alpha is None:
-            alpha = torch.ones(num_class, 1)
-        elif isinstance(alpha, float):
-            alpha = torch.ones(num_class, 1) * (1 - self.alpha)
-            alpha[self.balance_index] = self.alpha
-        elif isinstance(alpha, (list, np.ndarray)):
-            assert len(alpha) == num_class
-            alpha = torch.FloatTensor(alpha).view(num_class, 1)
-            alpha = alpha / alpha.sum()
-        else:
-            raise TypeError("Not support alpha type")
-
-        if alpha.device != logit.device:
-            alpha = alpha.to(logit.device)
-
-        # One-hot
-        idx = target.long()
-        one_hot_key = torch.zeros(target.size(0), num_class, device=logit.device)
-        one_hot_key.scatter_(1, idx, 1)
-
-        # Smooth safely
-        if self.smooth:
-            if num_class > 1:
-                one_hot_key = torch.clamp(one_hot_key, self.smooth / (num_class - 1), 1.0 - self.smooth)
-            else:
-                one_hot_key = torch.clamp(one_hot_key, self.smooth, 1.0 - self.smooth)
-
-        pt = (one_hot_key * logit).sum(1) + self.smooth
-        logpt = pt.log()
-
-        alpha = alpha[idx].squeeze()
-        loss = -alpha * torch.pow((1 - pt), self.gamma) * logpt
-
-        if self.size_average:
-            loss = loss.mean()
+        if self.reduction == "mean":
+            return loss.mean()
+        elif self.reduction == "sum":
+            return loss.sum()
         return loss
