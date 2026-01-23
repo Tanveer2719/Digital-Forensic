@@ -827,16 +827,41 @@ def has_valid_root(events, anomaly: AnomalyType) -> bool:
 ANOMALY_CYCLER = cycle(list(AnomalyType))
 
 def pick_anomalies(is_multi: bool, events):
-    candidates = list(AnomalyType)
-    valid = [a for a in candidates if has_valid_root(events, a)]
-
-    if not valid:
-        raise RuntimeError("No valid anomalies for this case")
-
+    """
+    Pick anomalies for a case.
+    - For single: 1 anomaly
+    - For multi: 2 or 3 anomalies (depending on availability)
+    - First tries the cycler for balance, then falls back to any valid anomaly
+    """
+    # Determine how many anomalies to pick
     if not is_multi:
-        return [random.choice(valid)]
+        needed = 1
     else:
-        return random.sample(valid, k=min(2, len(valid)))
+        # Pick 2 or 3 depending on valid anomalies
+        valid_total = [a for a in AnomalyType if has_valid_root(events, a)]
+        needed = min(len(valid_total), random.choice([2, 3]))
+
+    selected = []
+
+    # Try cycler first
+    attempts = 0
+    max_attempts = len(AnomalyType) * 2  # two full cycles
+    while len(selected) < needed and attempts < max_attempts:
+        candidate = next(ANOMALY_CYCLER)
+        if has_valid_root(events, candidate) and candidate not in selected:
+            selected.append(candidate)
+        attempts += 1
+
+    # Fallback: pick from any remaining valid anomalies
+    if len(selected) < needed:
+        valid_anywhere = [a for a in AnomalyType if has_valid_root(events, a) and a not in selected]
+        if not valid_anywhere:
+            raise RuntimeError("No valid anomalies available for this case")
+        while len(selected) < needed:
+            selected.append(random.choice(valid_anywhere))
+
+    return selected[:needed]
+
 
 
 def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType = None):
@@ -941,9 +966,8 @@ def generate_normal_case(case_id=None, min_len=None, max_len=None):
         }
     }
 
-def generate_anomalous_case_with_length(case_id, min_len, max_len, anomaly_type):
-    case = generate_normal_case(case_id, min_len, max_len)
-
+def generate_anomalous_case_with_length(base_case,anomaly_type):
+    case = base_case
     root_index, explanation,anomaly_type = inject_root_anomaly(case, anomaly_type)
     apply_legal_cascade(case, root_index, anomaly_type)
 
@@ -958,13 +982,13 @@ def generate_anomalous_case_with_length(case_id, min_len, max_len, anomaly_type)
 
     return case
 
-def generate_anomalous_case_with_length_multi_device(case_id, min_len, max_len, anomaly_types):
+def generate_anomalous_case_with_length_multi_device(base_case, anomaly_types):
     """
     Generate a case with multiple anomalies affecting different devices/evidences.
     Ground truth explanations stored as a dict keyed by anomaly type.
     """
     # Step 1: Generate a normal case
-    case_data = generate_normal_case(case_id, min_len, max_len)
+    case_data = base_case
     events = case_data["events"]
     
     case_data["case_metadata"]["label"] = "benign_anomaly"
@@ -1041,22 +1065,22 @@ def generate_full_forensic_dataset():
     
             # Decide case type
             is_multi = generated_cases >= single_limit
+            
+            min_len=LENGTH_BUCKETS[bucket_name]["min"]
+            max_len=LENGTH_BUCKETS[bucket_name]["max"]
+            normal_case = generate_normal_case(case_id, min_len, max_len)
     
             # Pick anomalies for THIS case only
-            case_anomalies = pick_anomalies(is_multi)
+            case_anomalies = pick_anomalies(is_multi, normal_case['events'])
     
             if not is_multi:
                 case_data = generate_anomalous_case_with_length(
-                    case_id,
-                    min_len=LENGTH_BUCKETS[bucket_name]["min"],
-                    max_len=LENGTH_BUCKETS[bucket_name]["max"],
+                    base_case = normal_case,
                     anomaly_type=case_anomalies[0]
                 )
             else:
                 case_data = generate_anomalous_case_with_length_multi_device(
-                    case_id,
-                    min_len=LENGTH_BUCKETS[bucket_name]["min"],
-                    max_len=LENGTH_BUCKETS[bucket_name]["max"],
+                    base_case = normal_case,
                     anomaly_types=case_anomalies
                 )
     
