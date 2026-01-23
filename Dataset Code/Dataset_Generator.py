@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 from enum import Enum
 import string
+import json
 from itertools import cycle
 from collections import defaultdict
 
@@ -819,40 +820,24 @@ def inject_root_anomaly(case: dict, anomaly: AnomalyType,target_index: int = Non
 
     return target_index, explanation,anomaly
 
-
+def has_valid_root(events, anomaly: AnomalyType) -> bool:
+    return select_root_index(events, anomaly) is not None
 
 
 ANOMALY_CYCLER = cycle(list(AnomalyType))
 
-def pick_anomalies(is_multi: bool):
+def pick_anomalies(is_multi: bool, events):
+    candidates = list(AnomalyType)
+    valid = [a for a in candidates if has_valid_root(events, a)]
+
+    if not valid:
+        raise RuntimeError("No valid anomalies for this case")
+
     if not is_multi:
-        return [next(ANOMALY_CYCLER)]
+        return [random.choice(valid)]
     else:
-        # ensure two distinct anomalies
-        first = next(ANOMALY_CYCLER)
-        second = next(ANOMALY_CYCLER)
-        while second == first:
-            second = next(ANOMALY_CYCLER)
-        return [first, second]
+        return random.sample(valid, k=min(2, len(valid)))
 
-
-
-def generate_anomalous_case_with_length(case_id, min_len, max_len, anomaly_type):
-    case = generate_normal_case(case_id, min_len, max_len)
-
-    root_index, explanation,anomaly_type = inject_root_anomaly(case, anomaly_type)
-    apply_legal_cascade(case, root_index, anomaly_type)
-
-    case["case_metadata"]["label"] = "benign_anomaly"
-    case["case_metadata"]["anomaly_type"] = anomaly_type.value
-
-    case["ground_truth_explanations"] = build_ground_truth(
-        root_index,
-        explanation,
-        case["events"]
-    )
-
-    return case
 
 def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType = None):
     """
@@ -910,8 +895,7 @@ def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType =
         if not invalidate:
             continue
         case["validation_flags"][flag] = False
-
-    
+ 
 def build_ground_truth(root_index, explanation, events):
     root_event = events[root_index]
     evidence_id = root_event["evidence_id"]
@@ -957,12 +941,27 @@ def generate_normal_case(case_id=None, min_len=None, max_len=None):
         }
     }
 
+def generate_anomalous_case_with_length(case_id, min_len, max_len, anomaly_type):
+    case = generate_normal_case(case_id, min_len, max_len)
 
+    root_index, explanation,anomaly_type = inject_root_anomaly(case, anomaly_type)
+    apply_legal_cascade(case, root_index, anomaly_type)
+
+    case["case_metadata"]["label"] = "benign_anomaly"
+    case["case_metadata"]["anomaly_type"] = anomaly_type.value
+
+    case["ground_truth_explanations"] = build_ground_truth(
+        root_index,
+        explanation,
+        case["events"]
+    )
+
+    return case
 
 def generate_anomalous_case_with_length_multi_device(case_id, min_len, max_len, anomaly_types):
     """
     Generate a case with multiple anomalies affecting different devices/evidences.
-    Ensures global event indices are tracked for legal cascade.
+    Ground truth explanations stored as a dict keyed by anomaly type.
     """
     # Step 1: Generate a normal case
     case_data = generate_normal_case(case_id, min_len, max_len)
@@ -971,11 +970,13 @@ def generate_anomalous_case_with_length_multi_device(case_id, min_len, max_len, 
     case_data["case_metadata"]["label"] = "benign_anomaly"
     case_data["case_metadata"]["anomaly_type"] = "multi_anomaly"
 
-    # Step 2: Pick 2-3 device+evidence chains to apply anomalies
+    # Initialize dict for ground truth
+    case_data["ground_truth_explanations"] = {}
+
+    # Step 2: Pick device+evidence chains
     unique_chains = list({(e["device_id"], e["evidence_id"]) for e in events})
     random.shuffle(unique_chains)
 
-    # Step 3: Map each anomaly to a device+evidence
     for i, anomaly in enumerate(anomaly_types):
         device_id, evidence_id = unique_chains[i % len(unique_chains)]
         
@@ -988,25 +989,19 @@ def generate_anomalous_case_with_length_multi_device(case_id, min_len, max_len, 
         global_target_idx = chain_indices[local_target_idx]
 
         # Inject anomaly directly into the global event
-        root_index, explanation,anomaly_type = inject_root_anomaly(case_data, anomaly, target_index=global_target_idx)
+        root_index, explanation, actual_anomaly_type = inject_root_anomaly(
+            case_data, anomaly, target_index=global_target_idx
+        )
         
         # Apply legal cascade downstream using the global index
-        apply_legal_cascade(
-            case_data, root_index, anomaly_type
-        )
+        apply_legal_cascade(case_data, root_index, actual_anomaly_type)
 
-        # Attach ground truth explanation globally
-        if "ground_truth_explanations" not in case_data:
-            case_data["ground_truth_explanations"] = []
-        case_data["ground_truth_explanations"].append(
-            build_ground_truth(global_target_idx, explanation, events)
+        # Attach ground truth explanation keyed by anomaly type
+        case_data["ground_truth_explanations"][actual_anomaly_type.value] = build_ground_truth(
+            global_target_idx, explanation, events
         )
 
     return case_data
-
-
-
-import json
 
 def generate_full_forensic_dataset():
     all_cases_list = []
