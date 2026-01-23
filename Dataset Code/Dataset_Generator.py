@@ -847,12 +847,12 @@ def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType =
     
 def build_ground_truth(root_index, explanation, events):
     root_event = events[root_index]
-
     evidence_id = root_event["evidence_id"]
     root_ts = pd.to_datetime(root_event["timestamp_iso"])
 
     affected_events = [
-        i for i, e in enumerate(events)
+        e["event_index"]
+        for e in events
         if (
             e["evidence_id"] == evidence_id and
             pd.to_datetime(e["timestamp_iso"]) > root_ts
@@ -861,7 +861,7 @@ def build_ground_truth(root_index, explanation, events):
 
     return {
         "root_cause": {
-            "event_index": root_index,
+            "event_index": root_event["event_index"],
             **explanation
         },
         "legal_consequence": {
