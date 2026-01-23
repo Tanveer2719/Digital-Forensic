@@ -6,6 +6,7 @@ import pandas as pd
 from enum import Enum
 import string
 from itertools import cycle
+from collections import defaultdict
 
 
 random.seed(42)
@@ -589,12 +590,78 @@ class AnomalyType(Enum):
     SEQUENCE_FLIP = "dfg_sequence_violation"         # DFG Workflow
 
 
+def select_root_index(events, anomaly: AnomalyType):
+
+    # --- STRICTLY CONSTRAINED ANOMALIES ---
+
+    if anomaly == AnomalyType.SEAL_BROKEN_UNJUSTIFIED:
+        candidates = [
+            i for i, e in enumerate(events)
+            if e["event_type"] == "sealing"
+        ]
+
+    elif anomaly == AnomalyType.WRITE_BLOCKER_MISSING:
+        candidates = [
+            i for i, e in enumerate(events)
+            if e["event_type"] == "acquisition"
+            and e["device_category"] in ["laptop", "USB"]
+        ]
+
+    elif anomaly == AnomalyType.MISSING_HANDOVER:
+        candidates = [
+            i for i, e in enumerate(events)
+            if e.get("handover_document_id") is not None
+        ]
+
+    elif anomaly == AnomalyType.SEQUENCE_FLIP:
+        by_evidence = defaultdict(list)
+        for i, e in enumerate(events):
+            if e["event_type"] in DFG_SEQUENCE:
+                by_evidence[e["evidence_id"]].append(i)
+
+        valid_chains = [idxs for idxs in by_evidence.values() if len(idxs) >= 2]
+        return random.choice(random.choice(valid_chains)) if valid_chains else None
+
+    # --- WEAKLY CONSTRAINED (CONTEXT-AWARE) ---
+
+    elif anomaly == AnomalyType.HASH_MISMATCH:
+        candidates = [
+            i for i, e in enumerate(events)
+            if e.get("hash_post_source") is not None
+        ]
+
+    elif anomaly == AnomalyType.TOOL_UNVALIDATED:
+        candidates = [
+            i for i, e in enumerate(events)
+            if e.get("tool_name") is not None
+        ]
+
+    elif anomaly == AnomalyType.UNAUTHORIZED_ACCESS:
+        candidates = [
+            i for i, e in enumerate(events)
+            if e.get("custodian_id") is not None
+        ]
+
+    elif anomaly == AnomalyType.CLOCK_DRIFT:
+        candidates = list(range(len(events)))  # any timestamped event
+
+    # --- FALLBACK (SHOULD NEVER TRIGGER) ---
+    else:
+        candidates = list(range(len(events)))
+
+    return random.choice(candidates) if candidates else None
+
+
 def inject_root_anomaly(case: dict, anomaly: AnomalyType,target_index: int = None):
 
     events = case["events"]
 
     if target_index is None:
-        target_index = len(events) // 4
+        target_index = select_root_index(events, anomaly)
+
+    if target_index is None:
+        raise RuntimeError(f"No valid root event for anomaly {anomaly}")
+
 
     event = events[target_index]
 
