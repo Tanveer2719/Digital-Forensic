@@ -782,7 +782,7 @@ def generate_anomalous_case_with_length(case_id, min_len, max_len, anomaly_type)
     case["ground_truth_explanations"] = build_ground_truth(
         root_index,
         explanation,
-        len(case["events"])
+        case["events"]
     )
 
     return case
@@ -863,6 +863,7 @@ def build_ground_truth(root_index, explanation, events):
         }
     }
 
+
 def generate_normal_case(case_id=None, min_len=None, max_len=None):
     if min_len is not None and max_len is not None:
         n_events = random.randint(min_len, max_len)
@@ -925,7 +926,7 @@ def generate_anomalous_case_with_length_multi_device(case_id, min_len, max_len, 
         if "ground_truth_explanations" not in case_data:
             case_data["ground_truth_explanations"] = []
         case_data["ground_truth_explanations"].append(
-            build_ground_truth(global_target_idx, explanation, len(events))
+            build_ground_truth(global_target_idx, explanation, events)
         )
 
     return case_data
