@@ -839,17 +839,16 @@ def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType =
             continue
         case["validation_flags"][flag] = False
 
-
-
     
 def build_ground_truth(root_index, explanation, events):
     root_event = events[root_index]
     evidence_id = root_event["evidence_id"]
+    root_ts = pd.to_datetime(root_event["timestamp_iso"])
 
-    # Only downstream events of the same evidence are affected
+    # Only events in the same evidence AND after the root event in time
     affected_events = [
-        i for i, e in enumerate(events) 
-        if e["evidence_id"] == evidence_id and i > root_index
+        i for i, e in enumerate(events)
+        if e["evidence_id"] == evidence_id and pd.to_datetime(e["timestamp_iso"]) > root_ts
     ]
 
     return {
@@ -862,7 +861,6 @@ def build_ground_truth(root_index, explanation, events):
             "impact": "Evidence inadmissible under Section 65B due to upstream procedural violation"
         }
     }
-
 
 def generate_normal_case(case_id=None, min_len=None, max_len=None):
     if min_len is not None and max_len is not None:
