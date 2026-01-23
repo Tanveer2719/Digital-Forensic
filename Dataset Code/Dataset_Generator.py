@@ -747,9 +747,15 @@ def inject_root_anomaly(case: dict, anomaly: AnomalyType,target_index: int = Non
             # Optional: annotate
             e1["notes"] = "DFG sequence violated: event order incorrect"
             e2["notes"] = "DFG sequence violated: event order incorrect"
+
+            target_index = events.index(e1)
+            events[target_index]["integrity_tainted"] = True
+            events[events.index(e2)]["integrity_tainted"] = True
+
+         
     
         courtroom_compliance["courtroom_compliance_note"] = {
-            "impact": "Workflow violation: analysis performed before prerequisite steps"
+            "impact": "Workflow violation"
         }
 
 
@@ -820,6 +826,7 @@ def inject_root_anomaly(case: dict, anomaly: AnomalyType,target_index: int = Non
 
     return target_index, explanation,anomaly
 
+
 def has_valid_root(events, anomaly: AnomalyType) -> bool:
     return select_root_index(events, anomaly) is not None
 
@@ -862,8 +869,6 @@ def pick_anomalies(is_multi: bool, events):
 
     return selected[:needed]
 
-
-
 def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType = None):
     """
     Apply integrity taint and update validation flags based on anomaly impact.
@@ -884,7 +889,7 @@ def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType =
     for e in events:
         if (
             e["evidence_id"] == evidence_id and
-            pd.to_datetime(e["timestamp_iso"]) > root_ts
+            pd.to_datetime(e["timestamp_iso"]) >= root_ts
         ):
             e["integrity_tainted"] = True
 
