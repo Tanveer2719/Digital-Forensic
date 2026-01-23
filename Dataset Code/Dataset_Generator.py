@@ -800,10 +800,15 @@ def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType =
     events = case["events"]
     root_event = events[root_index]
     evidence_id = root_event["evidence_id"]
+    root_ts = pd.to_datetime(root_event["timestamp_iso"])
 
-    # --- Step 1: Taint downstream events for the same evidence ---
-    for i, e in enumerate(events):
-        if e["evidence_id"] == evidence_id and i > root_index:
+
+    # --- Step 1: Taint downstream events (same evidence, later in time) ---
+    for e in events:
+        if (
+            e["evidence_id"] == evidence_id and
+            pd.to_datetime(e["timestamp_iso"]) > root_ts
+        ):
             e["integrity_tainted"] = True
 
     # --- Step 2: Determine which validation flags to update ---
@@ -842,13 +847,16 @@ def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType =
     
 def build_ground_truth(root_index, explanation, events):
     root_event = events[root_index]
+
     evidence_id = root_event["evidence_id"]
     root_ts = pd.to_datetime(root_event["timestamp_iso"])
 
-    # Only events in the same evidence AND after the root event in time
     affected_events = [
         i for i, e in enumerate(events)
-        if e["evidence_id"] == evidence_id and pd.to_datetime(e["timestamp_iso"]) > root_ts
+        if (
+            e["evidence_id"] == evidence_id and
+            pd.to_datetime(e["timestamp_iso"]) > root_ts
+        )
     ]
 
     return {
