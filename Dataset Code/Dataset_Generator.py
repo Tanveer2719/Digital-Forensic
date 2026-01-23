@@ -842,14 +842,23 @@ def apply_legal_cascade(case: dict, root_index: int, anomaly_type: AnomalyType =
 
 
     
-def build_ground_truth(root_index, explanation, total_events):
+def build_ground_truth(root_index, explanation, events):
+    root_event = events[root_index]
+    evidence_id = root_event["evidence_id"]
+
+    # Only downstream events of the same evidence are affected
+    affected_events = [
+        i for i, e in enumerate(events) 
+        if e["evidence_id"] == evidence_id and i > root_index
+    ]
+
     return {
         "root_cause": {
             "event_index": root_index,
             **explanation
         },
         "legal_consequence": {
-            "affected_events": list(range(root_index + 1, total_events)),
+            "affected_events": affected_events,
             "impact": "Evidence inadmissible under Section 65B due to upstream procedural violation"
         }
     }
